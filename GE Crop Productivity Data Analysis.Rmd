@@ -1,6 +1,5 @@
 --- 
 title: "GE Crop Productivity Data Analysis" 
-author: "Group W" 
 output: html_document 
 date: "2024-10-27" 
 --- 
@@ -250,4 +249,5 @@ Sources regarding French and Italian GE restrictions:
 <https://www.loc.gov/item/global-legal-monitor/2014-06-19/france-gmo-prohibition-confirmed/> 
  
 <https://www.loc.gov/item/global-legal-monitor/2016-12-26/italy-ban-on-cultivation-of-genetically-modified-organisms/> 
+
 
