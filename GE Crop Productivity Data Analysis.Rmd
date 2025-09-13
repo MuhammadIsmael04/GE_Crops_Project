@@ -1,0 +1,253 @@
+--- 
+title: "GE Crop Productivity Data Analysis" 
+author: "Group W" 
+output: html_document 
+date: "2024-10-27" 
+--- 
+ 
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(echo = TRUE) 
+library(dplyr) 
+library(ggplot2) 
+``` 
+ 
+# Section 1 - Introduction and Data Descriptions 
+### Part 1 - Introduction: present the question, why is it relevant. 
+Research Question: 
+Has the widespread adoption of genetically engineered (GE) crops led to a more productive and efficient agricultural industry? 
+ 
+Research Question, Expanded:  
+When it comes to GE crops, the primary goal of their development was, and continues to be resistance, that is, modifying the genetic structure of crops so that they could resist a wide array of threats, like, most notably, insects and herbicides. While GE crops at their core, are designed to minimize crop losses, in practice, can their adoption be attributed to higher agricultural production yields, and if so, how much of an increase in production yields can we attribute to them? Additionally, we mention efficiency, that is, if we are achieving higher yields in the agricultural industry, are we doing so with less, that is, less applications (less fertilizer, less insecticides, less herbicides, etc.)? Overall, we feel this is an important research question because there is controversy surrounding the overall use of GE crops, and determining whether or not they provide a truly measurable advantage can be important in the discussion pertaining to their use. 
+ 
+### Part 2 - Data: Describe data source, variables used (define if necessary) and frequency, potential limitations. Why is it appropriate to answer the question. 
+ 
+As of now, we are mainly looking data coming from many sources, each containing different data pertaining to the project (sources which have been combined into one). Additionally, we are also focused mainly on the production of corn in relation to GE presence. Below is a list of sources used in the in the project, the specific variables used, and the observation frequency of the variables. Furthermore, due to the nature of the research question, we feel that a differences in differences (DiD) approach is best in terms of proving causality, and because of this, there will be two main data frames, one pertaining to the US specific data, and one pertaining to country by country data where there is both treatment countries (countries who utilize and permit GE cultivation), and untreated countries (countries who prohibit the use of GE crops in their agricultural industry). 
+
+Potential Limitations in this study of GE Crops and impact on agricultural efficiency include environmental factors like climate variability, disease outbreaks, soil, quality, and water availability. These all impact agricultural efficiency and can overshadow the effects of GE crops. 
+ 
+GE crop usage data from the United States Department of Agriculture’s Economic Research Service (USDA’s ERS). This data consists of percent of crops planted that are genetically engineered by state and year from 2000-2024. This data in important because it contains the main variable of the research question. 
+Data source link: https://www.ers.usda.gov/data-products/adoption-of-genetically-engineered-crops-in-the-u-s/ 
+ 
+Crop production data from the National Agriculture and Statistics Survey (NASS). This data, obtained from the NASS, contains variables pertaining to both production of corn, and the area of corn planted, both annually by state. This data is important because it can be used to measure the potential effects GE presence on yield, and overall crop production. This data comes from a very large database, and therefore it must be filtered online, via a portal, before a specific .csv file can be obtained.  
+The link to the data portal can be found here: https://quickstats.nass.usda.gov/ 
+ 
+Pesticide and herbicide data from the United Sates Geological Survey (USGS). This data contains the use of various pesticides and herbicides by crop, by state, annually from 1992 to 2019. This primary purpose of this data is to address the question of efficiency, e.g. are we using less to produce more? 
+Data source link: https://www.sciencebase.gov/catalog/item/6081ae7cd34e8564d6866222 
+ 
+Corn cost and returns on production data from the USDA ERS. This data contains the average annual cost of corn production per acre in the United States from 1996 to 2023. This dataset contains variables like seed costs, fertilizer costs, overall operating costs, and other corn cost data.  
+This dataset can be found here: https://www.ers.usda.gov/data-products/commodity-costs-and-returns/ 
+ 
+As for the DiD data, this data is primarily coming from the Food and Agriculture Organization of the United Nations, or FAO, and their web portal FAOstat. When it comes to the DiD, to prove causality, we are looking at yield progression over time with treated and untreated countries.  
+Data source link: https://www.fao.org/faostat/en/#data 
+ 
+ 
+# Section 2 - All the code pertaining to the cleaning and joining of the datasets. 
+ 
+### Part 1 - Code pertaining to the US specific data. 
+ 
+```{r, include=TRUE, message=FALSE,warning=FALSE} 
+gmo_pct_data <- read.csv("1BiotechCrops.csv") %>% 
+  select( 
+    year = Year, 
+    pct_gm = Value, 
+    state = State, 
+    type = Attribute) %>% 
+      filter(type == "All GE varieties (percent of all corn planted)") %>% 
+      mutate(state = toupper(state)) %>% filter(state != "TEXAS") %>% 
+      filter(state != "NORTH DAKOTA") %>% filter(state != "OTHER STATES") %>% 
+  filter(state != "UNITED STATES") 
+ 
+corn_acre_data <- read.csv("1corn_acre_data.csv") %>% 
+  select(year = Year, 
+         state = State, 
+         total_corn_acres = Value) %>% 
+  filter(state %in% gmo_pct_data$state) 
+ 
+corn_yield_data <- read.csv("1corn_production.csv") %>%  
+  select(year = Year, 
+         state = State, 
+         corn_grain_bu = Value) %>% 
+  filter(state %in% gmo_pct_data$state) 
+ 
+treatment_data <- read.delim("1pesticide.txt") %>% 
+  select(state = State, 
+         year = Year, 
+         compound = Compound, 
+         unit = Units, 
+         corn_app = Corn) %>% 
+  mutate(state = toupper(state)) %>% 
+  filter(state %in% gmo_pct_data$state) %>% 
+  group_by(state, year) %>% 
+  summarise(total_app_kg = sum(corn_app, na.rm = TRUE)) 
+ 
+corn_seedcost_data <- read.csv("1corn_costs.csv") %>% 
+  filter(Region == "U.S. total") %>% filter(Item == "Seed") %>% 
+  select(year = Year, 
+         seed_cost_peracre = Value) %>% filter(year >= 2000) %>% 
+  filter(year <= 2019) 
+ 
+corn_totalcost_data <- read.csv("1corn_costs.csv") %>% 
+  filter(Region == "U.S. total") %>% filter(Item == "Total, operating costs") %>% 
+  select(year = Year, 
+         op_cost_peracre = Value) %>% filter(year >= 2000) %>% 
+  filter(year <= 2019) 
+ 
+us_joined_data <- gmo_pct_data %>% 
+  left_join(corn_acre_data, by = c("year", "state")) %>% 
+  left_join(corn_yield_data, by = c("year", "state")) %>% 
+  mutate( 
+    pct_gm = as.numeric(gsub(",", "", pct_gm)), 
+    total_corn_acres = as.numeric(gsub(",", "", total_corn_acres)), 
+    corn_grain_bu = as.numeric(gsub(",", "", corn_grain_bu)), 
+    bu_per_acre = corn_grain_bu/total_corn_acres 
+  ) %>% 
+  left_join(treatment_data, by = c("year","state") 
+  ) %>% filter(year < 2020) %>% 
+  left_join(corn_seedcost_data, by = "year") %>% 
+  left_join(corn_totalcost_data, by = "year") %>% 
+  select(state = state, 
+         year = year, 
+         ge_pct = pct_gm, 
+         "Corn" = type, 
+         acres_planted = total_corn_acres, 
+         corn_bu = corn_grain_bu, 
+         app_kg = total_app_kg, 
+         seed_cost_peracre, 
+         op_cost_peracre) 
+ 
+us_joined_data$bu_peracre <- us_joined_data$corn_bu/us_joined_data$acres_planted 
+us_joined_data$app_peracre <- us_joined_data$app_kg/us_joined_data$acres_planted 
+us_joined_data$ge_dummy <- ifelse(us_joined_data$ge_pct > 75, "True", "False") 
+``` 
+ 
+### Code pertaining to the DiD, country-by-country. 
+ 
+```{r,message=FALSE,warning=FALSE} 
+ge_countries <- read.csv("2ge_country_corn.csv") %>% 
+  select(country = Area, 
+         year = Year, 
+         crop = Item, 
+         unit = Unit, 
+         yield = Value) 
+ 
+non_ge_countries <- read.csv("2non_ge_countries.csv") %>% 
+  select(country = Area, 
+         year = Year, 
+         crop = Item, 
+         unit = Unit, 
+         yield = Value) 
+ 
+DiD_dataframe1 <- full_join(ge_countries, non_ge_countries,  
+                           by = c("country", "year", "crop", "unit", "yield")) 
+DiD_dataframe1$lyield <- log(DiD_dataframe1$yield) 
+DiD_dataframe1$GE_grower <- ifelse(DiD_dataframe1$country %in% ge_countries$country, "Yes", "No") 
+ 
+ 
+DiD_nonGE <- DiD_dataframe1 %>% filter(GE_grower == "No") 
+DiD_GE <- DiD_dataframe1 %>% filter(GE_grower == "Yes") 
+``` 
+ 
+# Section 3 - Analysis code & findings. 
+ 
+### Part 1a - US data analysis code, models, & graphs 
+ 
+```{r} 
+#LM measuring effect of GE presence and total applications in kg on bushels per acre. 
+lm1 <- lm(formula = bu_peracre ~ ge_pct + app_peracre, data = us_joined_data) 
+summary(lm1) 
+ 
+#LM measuring effect of GE presence on applications. 
+lm2 <- lm(formula = app_peracre ~ ge_pct, data = us_joined_data) 
+summary(lm2) 
+ 
+#LM measuring the presence of GE on average corn seed expenditure per acre 
+lm3 <- lm(formula = log(seed_cost_peracre) ~ ge_pct, data = us_joined_data) 
+summary(lm3) 
+ 
+#Plotting the bu per acre given ge_pct, colored by state 
+ggplot(us_joined_data,aes(y=bu_peracre,x=ge_pct, color = state))+ 
+  geom_point()+ 
+  geom_smooth(method=lm,se=F)+ 
+  labs(x="Percent of GE Corn Planted",y="Bushels Per Acre",color = "State",title = "Yield Given % of GE Share") 
+``` 
+ 
+### Part 1b - US data findings. 
+ 
+With the data that we currently have, and the regressions that we have run, the findings indicate that the presence of GE crops is a statistically significant factor on corn yield in the United States, and we would expect this to be the case, but we wanted to see by what amount, and this is where things get a little tricky. Specifically, as of now, at a 100% GE rate, the model estimates that GE crops will increase corn yield by ~30 bushels, but it is important to note the model likely suffers from omitted variable bais, and the figure that we currently have might overstate or understate the true effect of GE crops on US corn yields. Because of this, and the fact that there are many variables that we either did not, or cannot account for, when it comes to the US specific data, it is quite hard to prove causality, and to do this, we felt it was best to look towards a Differences in Differences (DiD) approach, where data would be taken from treated countries (ge producing countries) and untreated countries (countries whom heavily regulate or outright restrict ge cultivation). 
+ 
+Additionally, when it came to the question of efficiency, addressed in lm2, we found that the results were pretty interesting. Specifically, we expected to see a decrease in the kg of applications applied per acre as the presence of GE crops increased, but we did not. Instead, we found no clear measurable effect of GE on the amount of applications applied per acre. After thinking about it, this could be due to the fact that some GE crops are designed to resist certain applications (herbicides), which, in turn, allow for more of their use. 
+ 
+### Part 2a - DiD analysis code, models, & graphs. 
+ 
+```{r} 
+
+DiD_dataframe1 <- DiD_dataframe1 %>%
+  mutate(treatment = (GE_grower == "Yes"), time_period = (year >=2007)) #treatment is a dummy indicating if GE Grower, time_period shows if 2007 or after
+
+regression_for_DiD <- lm(lyield ~ treatment + time_period + treatment * time_period, DiD_dataframe1)
+(regression_for_DiD) #the interaction between treatment and time_period is the DiD casual effect, which is 0.04245
+
+
+
+
+
+#Linear regressions on the advancements in corn yields in both countries that use ge (DiD_GE), and countries that don't, or heavily regulate it (DiD_nonGE) 
+lm_nonGE <- lm(formula = lyield ~ year, data = DiD_nonGE) 
+summary(lm_nonGE) 
+lm_GE <- lm(formula = lyield ~ year, data = DiD_GE) 
+summary(lm_GE) 
+ 
+#Plotting yield over time in GE and non-GE countries. 
+ggplot(DiD_dataframe1,aes(x=year,y=yield,color=GE_grower))+ 
+  geom_point()+ 
+  geom_smooth(se=F)+ 
+  labs(x="Year",y="Corn Yield (kg/ha)",title="Corn Yield Over Time in GE, and non-GE Countries") 
+ 
+#Plotting France's corn yield over time, where the x intercepts indicate dates in which GE's were increasingly regulated 
+ggplotfrance <- DiD_dataframe1 %>% filter(country == "France") %>% 
+  ggplot(aes(x=year,y=yield))+ 
+  geom_point()+ 
+  geom_smooth(se=F)+ 
+  geom_vline(xintercept = 2008)+ 
+  geom_vline(xintercept = 2014)+ 
+  labs(x="Year",y="Corn Yield (kg/ha)",title="France's Corn Yield Over Time") 
+ggplotfrance 
+ 
+#Plotting Italy's corn yield over time, again, where the x intercepts indicate dates in which GE's were either regulated, or regulations were taken int effect. 
+ggplotitaly <- DiD_dataframe1 %>% filter(country == "Italy") %>% 
+  ggplot(aes(x=year,y=yield))+ 
+  geom_point()+ 
+  geom_smooth(se=F)+ 
+  geom_vline(xintercept = 2016)+ 
+    labs(x="Year",y="Corn Yield (kg/ha)",title="Italy's Corn Yield Over Time") 
+ggplotitaly 
+ 
+#Plotting Spain's corn yield over time, with no x intercepts, as Spain is not a country that heavily regulates GE's 
+ggplotspain <- DiD_dataframe1 %>% filter(country == "Spain") %>% 
+  ggplot(aes(x=year,y=yield))+ 
+  geom_point()+ 
+  geom_smooth(se=F)+ 
+  labs(x="Year",y="Corn Yield (kg/ha)",title="Spain's Corn Yield Over Time") 
+ggplotspain 
+
+
+
+``` 
+ 
+### Part 2b - DiD findings. 
+ 
+The initial linears model suggest that countries whom have implemented ge crops into their agricultural practices are experiencing more yield growth as opposed to countries who have not. Additionally, the results seem to indicate that the growth in yield is also more stable in GE producing countries as opposed to non-GE producing countries. After conducting the linear models, we wanted to visualize it, and here a ggplot was made to depict what was highlighted by the two models. 
+ 
+Moving on to the country-specific plots, here we wanted to look at the change in yield over time given three countries in the same region, France, Italy, and Spain. We found the results here to be quite interesting, as inflection points exist in the corn yields of France and Italy, and we think this can be explained. Specifically, the inflection points in France seem to occur in and around the years of 2008 and 2014, 2008 being a year in which one specific strain of GE (MON810) had it's cultivation banned, and 2014 being a year in which any and all GE corn was banned from being cultivated. When it comes to Italy, we see an inflection point around the year of 2016, which may relate to the national ban on GE cultivation, which took effect on December 11, 2016. When it comes to Spain, instead of seeing an unstable regression, we see one that is relatively stable, and this could be due to the fact that Spain has relied heavily on the use of GE crops, and has not imposed extensive regulations pertaining to their use. 
+ 
+Now, can we take these results to mean that GE crops are indeed causal of crop growth? Put simply, given the DiD data and the analysis, I would say that it is very likely that the gains in corn yield over time are caused by the increased presence of GE's. Still however, more analysis must be done as we would like to quantify this relationship. 
+
+Using a regression to show the interaction between the treatment and time_period variables shows the DiD causal effect, which is 0.04245. This implies that after 2007, there is a 4.25% causal increase in yield for GE growers compared to non-GE growers. However, this depends on if the parallel trends assumption is met, which will be further discussed in Part 3 of the project.
+ 
+Sources regarding French and Italian GE restrictions:  
+<https://maint.loc.gov/law/help/restrictions-on-gmos/france.php> 
+ 
+<https://www.loc.gov/item/global-legal-monitor/2014-06-19/france-gmo-prohibition-confirmed/> 
+ 
+<https://www.loc.gov/item/global-legal-monitor/2016-12-26/italy-ban-on-cultivation-of-genetically-modified-organisms/> 
+
